@@ -1,27 +1,16 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
 
-
 export function WelcomeBanner() {
   const [name, setName] = useState("");
   const [greeting, setGreeting] = useState("");
+  const [message, setMessage] = useState(
+    "Let's make today productive!"
+  );
 
   useEffect(() => {
-    async function getUser() {
-      try {
-        const response = await fetch("/api/auth/me");
-        const data = await response.json();
-
-        if (data.success) {
-          setName(data.user.name);
-        }
-      } catch (error) {
-        console.error("Failed to get user:", error);
-      }
-    }
-
-    getUser();
     const hour = new Date().getHours();
 
     if (hour >= 5 && hour < 12) {
@@ -33,6 +22,83 @@ export function WelcomeBanner() {
     } else {
       setGreeting("Good night");
     }
+
+    async function loadDashboardInfo() {
+      try {
+        const [userResponse, tasksResponse] = await Promise.all([
+          fetch("/api/auth/me"),
+          fetch("/api/tasks"),
+        ]);
+
+        const userData = await userResponse.json();
+        const tasksData = await tasksResponse.json();
+
+        if (userData.success) {
+          setName(userData.user.name);
+        }
+
+        if (!tasksResponse.ok) {
+          throw new Error("Failed to load tasks");
+        }
+
+        // Supports common API response formats.
+        const tasks = Array.isArray(tasksData)
+          ? tasksData
+          : tasksData.tasks || tasksData.data || [];
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const dayAfterTomorrow = new Date(today);
+        dayAfterTomorrow.setDate(today.getDate() + 2);
+
+        const pendingTasks = tasks.filter(
+          (task) => !task.completed
+        );
+
+        const overdueCount = pendingTasks.filter((task) => {
+          if (!task.dueDate) return false;
+
+          const dueDate = new Date(task.dueDate);
+          dueDate.setHours(0, 0, 0, 0);
+
+          return dueDate < today;
+        }).length;
+
+        const dueSoonCount = pendingTasks.filter((task) => {
+          if (!task.dueDate) return false;
+
+          const dueDate = new Date(task.dueDate);
+          dueDate.setHours(0, 0, 0, 0);
+
+          return dueDate >= today && dueDate <= dayAfterTomorrow;
+        }).length;
+
+        if (overdueCount > 0) {
+          setMessage(
+            `You have ${overdueCount} overdue ${
+              overdueCount === 1 ? "task" : "tasks"
+            } that need your attention.`
+          );
+        } else if (dueSoonCount > 0) {
+          setMessage(
+            `You have ${dueSoonCount} upcoming ${
+              dueSoonCount === 1 ? "task" : "tasks"
+            }. Let's make today productive!`
+          );
+
+        } else {
+          setMessage(
+            "You're all caught up for the next two days. Enjoy your day!"
+          );
+        }
+      } catch (error) {
+        console.error("Failed to load dashboard info:", error);
+        setMessage("Your AI Planner preview is ready below.");
+      }
+    }
+
+    loadDashboardInfo();
   }, []);
 
   return (
@@ -50,8 +116,7 @@ export function WelcomeBanner() {
       </h2>
 
       <p className="mt-2 max-w-md text-sm text-ops-100">
-        You have 3 tasks due in the next two days. Your AI Planner preview is
-        ready below.
+        {message}
       </p>
     </div>
   );
